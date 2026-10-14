@@ -1,10 +1,4 @@
 import os
-import sys
-
-# Forzado absoluto del entorno del servidor a UTF-8 antes de cualquier importación
-os.environ["PYTHONIOENCODING"] = "utf-8"
-os.environ["LANG"] = "en_US.UTF-8"
-
 import json
 import requests
 import pandas as pd
@@ -13,31 +7,16 @@ from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 
-# --- CONFIGURACIÓN DE ARCHIVOS ---
-HISTORIAL_FILE = "historial.csv"
-
 # --- CONFIGURACIÓN DE LA API DE GEMINI ---
 api_key = st.secrets.get("GEMINI_API_KEY", None)
 client = genai.Client(api_key=api_key) if api_key else None
-
-def scrapear_datos_partido(url_partido):
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        respuesta = requests.get(url_partido, headers=headers)
-        if respuesta.status_code == 200:
-            soup = BeautifulSoup(respuesta.text, "html.parser")
-            return {"exito": True, "contenido": {"partido": "Partido", "marcador": "0-0"}}
-        return {"exito": False, "error": f"Status: {respuesta.status_code}"}
-    except Exception as e:
-        return {"exito": False, "error": str(e)}
 
 # --- INTERFAZ GRÁFICA MÓVIL (PESTAÑAS) ---
 p_scraping, p_ocr, p_historial = st.tabs(["Scraping", "OCR", "Historial"])
 
 with p_scraping:
+    st.markdown("### Módulo de Scraping Activo")
     url_input = st.text_input("Pega la URL aquí")
-    if st.button("Analizar Enlace", type="primary"):
-        st.write("Módulo de scraping activo")
 
 with p_ocr:
     st.markdown("### 📸 Visión Artificial para Flashscore")
@@ -69,11 +48,10 @@ with p_ocr:
                         ]
                     )
                     
-                    # Limpieza radical del texto recibido (Remueve marcas de formato e ignora caracteres rotos)
+                    # Limpieza básica de formato markdown si la IA lo incluye por error
                     texto_ia = response.text.replace("```json", "").replace("```", "").strip()
-                    texto_filtrado = texto_ia.encode("ascii", "ignore").decode("ascii")
+                    datos_ia = json.loads(texto_ia)
                     
-                    datos_ia = json.loads(texto_filtrado)
                     st.success("¡Captura interpretada correctamente!")
                     
                     for item in datos_ia.get("partidos_detectados", []):
@@ -86,7 +64,7 @@ with p_ocr:
                         st.markdown("---")
                         
                 except Exception as e:
-                    # Obliga a mostrar el error en consola de manera limpia sin romper la pantalla
-                    error_limpio = str(e).encode("ascii", "ignore").decode("ascii")
-                    st.error(f"Error de procesamiento: {error_limpio}")
-            
+                    # Solución radical: Mostramos un mensaje genérico seguro sin procesar el texto del error
+                    st.error("Ocurrió un problema en la comunicación con la Inteligencia Artificial.")
+                    st.info("Por favor, asegúrate de que tu GEMINI_API_KEY en Secrets esté bien escrita.")
+                    
