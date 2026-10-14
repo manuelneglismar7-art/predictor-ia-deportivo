@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from google import genai
+import google.generativeai as genai
 from google.genai import types
 from PIL import Image
 import json
