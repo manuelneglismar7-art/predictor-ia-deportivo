@@ -6,6 +6,7 @@ import streamlit as st
 from bs4 import BeautifulSoup
 from google import genai
 from PIL import Image
+import io
 
 # --- CONFIGURACIÓN DE ARCHIVOS ---
 HISTORIAL_FILE = "historial.csv"
@@ -60,6 +61,7 @@ with p_ocr:
     imagen_subida = st.file_uploader("Selecciona una captura de Flashscore...", type=["png", "jpg", "jpeg"])
     
     if imagen_subida is not None:
+        # Abrir la imagen de manera segura usando PIL
         img = Image.open(imagen_subida)
         st.image(img, caption="Captura cargada con éxito", use_container_width=True)
         
@@ -67,26 +69,42 @@ with p_ocr:
             with st.spinner("Gemini analizando la estructura..."):
                 try:
                     prompt_instruccion = (
-                        "Analiza con precisión esta captura de Flashscore y extrae la información en un formato JSON limpio. "
+                        "Analiza con precisión esta captura de Flashscore y extrae la información en un formato JSON limpio con codificación UTF-8. "
+                        "Extrae todos los partidos visibles con sus respectivas cuotas. "
                         "Estructura esperada:\n"
                         "{\n"
-                        '  "partido": "Nombre Local vs Nombre Visitante",\n'
-                        '  "marcador": "Goles Local - Goles Visitante",\n'
-                        '  "cuotas": {"1": "cuota", "X": "cuota", "2": "cuota"}\n'
+                        '  "partidos_detectados": [\n'
+                        "    {\n"
+                        '      "partido": "Nombre Local vs Nombre Visitante",\n'
+                        '      "cuotas": {"1": "cuota", "X": "cuota", "2": "cuota"}\n'
+                        "    }\n"
+                        "  ]\n"
                         "}"
                     )
                     
+                    # Ejecutar la llamada mandando los datos como objeto PIL puro
                     response = client.models.generate_content(
                         model='gemini-2.0-flash',
                         contents=[img, prompt_instruccion]
                     )
                     
-                    json_texto = response.text.replace("```json", "").replace("```", "").strip()
+                    # Forzar la limpieza del texto de salida garantizando formato UTF-8 string
+                    texto_limpio = response.text.encode('utf-8', errors='ignore').decode('utf-8')
+                    json_texto = texto_limpio.replace("```json", "").replace("```", "").strip()
                     datos_ia = json.loads(json_texto)
                     
                     st.success("¡Captura interpretada correctamente!")
-                    st.write(datos_ia)
                     
+                    # Mostrar de forma elegante cada partido hallado
+                    for item in datos_ia.get("partidos_detectados", []):
+                        st.markdown(f"#### ⚽ {item.get('partido', 'Partido Desconocido')}")
+                        cuotas = item.get("cuotas", {"1": "N/A", "X": "N/A", "2": "N/A"})
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Local (1)", cuotas.get("1", "N/A"))
+                        c2.metric("Empate (X)", cuotas.get("X", "N/A"))
+                        c3.metric("Visitante (2)", cuotas.get("2", "N/A"))
+                        st.markdown("---")
+                        
                 except Exception as e:
                     st.error(f"Error al procesar: {str(e)}")
-                    
+    
