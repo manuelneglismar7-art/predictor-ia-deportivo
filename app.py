@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 from bs4 import BeautifulSoup
 from google import genai
+from google.genai import types
 from PIL import Image
 import io
 
@@ -61,17 +62,19 @@ with p_ocr:
     imagen_subida = st.file_uploader("Selecciona una captura de Flashscore...", type=["png", "jpg", "jpeg"])
     
     if imagen_subida is not None:
-        # Abrir la imagen de manera segura usando PIL
-        img = Image.open(imagen_subida)
-        st.image(img, caption="Captura cargada con éxito", use_container_width=True)
+        # Guardamos los bytes crudos de la imagen inmediatamente para evitar problemas de codificación string
+        bytes_imagen = imagen_subida.getvalue()
+        
+        # Mostrar la imagen en Streamlit de forma segura
+        st.image(bytes_imagen, caption="Captura cargada con éxito", use_container_width=True)
         
         if st.button("Procesar Captura con Gemini IA", type="primary", disabled=not client):
             with st.spinner("Gemini analizando la estructura..."):
                 try:
                     prompt_instruccion = (
-                        "Analiza con precisión esta captura de Flashscore y extrae la información en un formato JSON limpio con codificación UTF-8. "
-                        "Extrae todos los partidos visibles con sus respectivas cuotas. "
-                        "Estructura esperada:\n"
+                        "Analiza con precisión esta captura de pantalla de Flashscore y extrae la información en un formato JSON estricto. "
+                        "Busca todos los partidos que aparezcan en la imagen junto con sus respectivas cuotas decimales de apuesta. "
+                        "Devuelve ÚNICAMENTE el JSON estructurado de la siguiente forma, sin textos adicionales ni formato markdown:\n"
                         "{\n"
                         '  "partidos_detectados": [\n'
                         "    {\n"
@@ -82,22 +85,27 @@ with p_ocr:
                         "}"
                     )
                     
-                    # Ejecutar la llamada mandando los datos como objeto PIL puro
+                    # Enviamos la imagen codificada como bytes puros (PartData) evitando que Python intente tratarla como ASCII string
                     response = client.models.generate_content(
                         model='gemini-2.0-flash',
-                        contents=[img, prompt_instruccion]
+                        contents=[
+                            types.Part.from_bytes(
+                                data=bytes_imagen,
+                                mime_type=imagen_subida.type,
+                            ),
+                            prompt_instruccion
+                        ]
                     )
                     
-                    # Forzar la limpieza del texto de salida garantizando formato UTF-8 string
-                    texto_limpio = response.text.encode('utf-8', errors='ignore').decode('utf-8')
-                    json_texto = texto_limpio.replace("```json", "").replace("```", "").strip()
+                    # Limpiamos bloques de texto devueltos por seguridad
+                    json_texto = response.text.replace("```json", "").replace("```", "").strip()
                     datos_ia = json.loads(json_texto)
                     
                     st.success("¡Captura interpretada correctamente!")
                     
-                    # Mostrar de forma elegante cada partido hallado
+                    # Desplegar visualmente cada partido en forma de métricas limpias
                     for item in datos_ia.get("partidos_detectados", []):
-                        st.markdown(f"#### ⚽ {item.get('partido', 'Partido Desconocido')}")
+                        st.markdown(f"### ⚽ {item.get('partido', 'Partido Desconocido')}")
                         cuotas = item.get("cuotas", {"1": "N/A", "X": "N/A", "2": "N/A"})
                         c1, c2, c3 = st.columns(3)
                         c1.metric("Local (1)", cuotas.get("1", "N/A"))
@@ -106,5 +114,7 @@ with p_ocr:
                         st.markdown("---")
                         
                 except Exception as e:
-                    st.error(f"Error al procesar: {str(e)}")
-    
+                    st.error("Ocurrió un inconveniente al procesar la imagen.")
+                    st.info("Prueba re-subiendo la captura. Detalle técnico:")
+                    st.code(str(e))
+            
