@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-from google.genai import types
 from PIL import Image
 import json
 import pandas as pd
