@@ -1,4 +1,9 @@
 import os
+import sys
+
+# Forzar al sistema operativo del servidor a usar codificación universal UTF-8
+os.environ["PYTHONIOENCODING"] = "utf-8"
+
 import json
 import requests
 import pandas as pd
@@ -7,7 +12,6 @@ from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
 from PIL import Image
-import io
 
 # --- CONFIGURACIÓN DE ARCHIVOS ---
 HISTORIAL_FILE = "historial.csv"
@@ -23,16 +27,11 @@ def scrapear_datos_partido(url_partido):
         respuesta = requests.get(url_partido, headers=headers)
         if respuesta.status_code == 200:
             soup = BeautifulSoup(respuesta.text, "html.parser")
-            
-            team_tags = soup.find_all(["h1", "h2", "span"], class_=[
-                "team-name", "participant-name", "home-team", "away-team", "team"
-            ])
-            equipo_local = team_tags[0].get_text(strip=True) if len(team_tags) > 0 else "Equipo Local"
-            equipo_visitante = team_tags[1].get_text(strip=True) if len(team_tags) > 1 else "Equipo Visitante"
-            
+            team_tags = soup.find_all(["h1", "h2", "span"], class_=["team-name", "participant-name", "home-team", "away-team", "team"])
+            equipo_local = team_tags[0].get_text(strip=True) if len(team_tags) > 0 else "Local"
+            equipo_visitante = team_tags[1].get_text(strip=True) if len(team_tags) > 1 else "Away"
             score_tag = soup.find(["div", "span"], class_=["score", "current-score", "match-score", "result"])
             marcador = score_tag.get_text(strip=True) if score_tag else "0 - 0"
-
             return {"exito": True, "contenido": {"partido": f"{equipo_local} vs {equipo_visitante}", "marcador": marcador}}
         return {"exito": False, "error": f"Status code: {respuesta.status_code}"}
     except Exception as e:
@@ -62,50 +61,44 @@ with p_ocr:
     imagen_subida = st.file_uploader("Selecciona una captura de Flashscore...", type=["png", "jpg", "jpeg"])
     
     if imagen_subida is not None:
-        # Guardamos los bytes crudos de la imagen inmediatamente para evitar problemas de codificación string
         bytes_imagen = imagen_subida.getvalue()
-        
-        # Mostrar la imagen en Streamlit de forma segura
         st.image(bytes_imagen, caption="Captura cargada con éxito", use_container_width=True)
         
         if st.button("Procesar Captura con Gemini IA", type="primary", disabled=not client):
             with st.spinner("Gemini analizando la estructura..."):
                 try:
+                    # Se le pide explícitamente a Gemini omitir acentos o caracteres especiales
                     prompt_instruccion = (
-                        "Analiza con precisión esta captura de pantalla de Flashscore y extrae la información en un formato JSON estricto. "
-                        "Busca todos los partidos que aparezcan en la imagen junto con sus respectivas cuotas decimales de apuesta. "
-                        "Devuelve ÚNICAMENTE el JSON estructurado de la siguiente forma, sin textos adicionales ni formato markdown:\n"
+                        "Analyze this Flashscore screenshot. Extract all matches and their decimal betting odds. "
+                        "IMPORTANT: Do not use accents or special characters like tildes (ñ, á, é, í, ó, ú) in the response text. "
+                        "Return ONLY a clean JSON object. Do not include markdown code blocks or explanations. "
+                        "Expected format:\n"
                         "{\n"
                         '  "partidos_detectados": [\n'
                         "    {\n"
-                        '      "partido": "Nombre Local vs Nombre Visitante",\n'
-                        '      "cuotas": {"1": "cuota", "X": "cuota", "2": "cuota"}\n'
+                        '      "partido": "Home Team vs Away Team",\n'
+                        '      "cuotas": {"1": "1.50", "X": "3.20", "2": "4.00"}\n'
                         "    }\n"
                         "  ]\n"
                         "}"
                     )
                     
-                    # Enviamos la imagen codificada como bytes puros (PartData) evitando que Python intente tratarla como ASCII string
                     response = client.models.generate_content(
                         model='gemini-2.0-flash',
                         contents=[
-                            types.Part.from_bytes(
-                                data=bytes_imagen,
-                                mime_type=imagen_subida.type,
-                            ),
+                            types.Part.from_bytes(data=bytes_imagen, mime_type=imagen_subida.type),
                             prompt_instruccion
                         ]
                     )
                     
-                    # Limpiamos bloques de texto devueltos por seguridad
+                    # Forzar limpieza rigurosa eliminando marcas de formato
                     json_texto = response.text.replace("```json", "").replace("```", "").strip()
                     datos_ia = json.loads(json_texto)
                     
                     st.success("¡Captura interpretada correctamente!")
                     
-                    # Desplegar visualmente cada partido en forma de métricas limpias
                     for item in datos_ia.get("partidos_detectados", []):
-                        st.markdown(f"### ⚽ {item.get('partido', 'Partido Desconocido')}")
+                        st.markdown(f"### ⚽ {item.get('partido', 'Unknown Match')}")
                         cuotas = item.get("cuotas", {"1": "N/A", "X": "N/A", "2": "N/A"})
                         c1, c2, c3 = st.columns(3)
                         c1.metric("Local (1)", cuotas.get("1", "N/A"))
@@ -115,6 +108,6 @@ with p_ocr:
                         
                 except Exception as e:
                     st.error("Ocurrió un inconveniente al procesar la imagen.")
-                    st.info("Prueba re-subiendo la captura. Detalle técnico:")
-                    st.code(str(e))
+                    st.info("Intente re-subiendo el archivo limpio.")
+                    st.code(str(e).encode('ascii', 'ignore').decode('ascii'))
             
