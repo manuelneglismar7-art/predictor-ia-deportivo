@@ -1,7 +1,8 @@
-streamlit
-google-generativeai
-beautifulsoup4
 requests
-pillow
 pandas
+streamlit
+beautifulsoup4
+google-genai
+pillow
+
 
