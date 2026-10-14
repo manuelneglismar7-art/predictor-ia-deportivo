@@ -1,8 +1,16 @@
-requests
-pandas
-streamlit
-beautifulsoup4
-google-genai
-pillow
+import streamlit as st
+from google import genai
+
+# 1. Leer de forma segura la API Key desde los Secrets de Streamlit
+api_key_gemini = st.secrets["GEMINI_API_KEY"]
+
+# 2. Inicializar el cliente pasándole la clave configurada
+client = genai.Client(api_key=api_key_gemini)
+
+st.title("Predictor Deportivo con IA")
+
+# El resto de tu lógica para procesar la captura...
+# Ejemplo de llamada:
+# interaction = client.interactions.create(model="gemini-2.5-flash", input="Tu prompt aquí")
 
 
